@@ -164,3 +164,117 @@ git clone https://github.com/limine-bootloader/limine.git --branch=v10.x-binary 
 make -C limine
 ```
 
+Let me go through the run.sh file now.
+
+Before that, I just wanna say - ISO is gonna come up many times. And I have come across this ISO thing many times before. So I know it is just like a zip file. You combine many files into one file and compress it to reduce size, I mean you don't do it manually, some toold would do it for you - compression and combination, you just have to use that tool.
+Here that tool is: xorriso.
+
+```sh
+set -e
+# -e means exit immediately if a pipeline returns a non-zero status. basically means if an error comes while executing the script then -> exit. stop there.
+
+cargo build
+# compiles the rust kernel. binaries are produced at "target/x86_64-unknown-none/debug/netiOS"
+
+mkdir -p ...
+# -p creates parent dir(s) if they don't exist
+
+cp ...
+# cp target/../netiOS iso_root/../kernel
+# it has renamed 'netiOS' to 'kernel'
+
+# cp copies, syntax: cp [options] source(s) destination
+# [common options: -r (recursive), -i (interactive, confirm before overwrite), -v (verbose), -f (force copy, removes dest file if it cannot be opened for writing and proceeds with copy), -u (update mode, copies if src is newer than dest or dest is missing), -a (archieve mode; preserve file attr such as perms, ownership, timestamps)]
+
+# we copy 3 limine files: BIOS bootloader (limine-bios.sys) , BIOS CD boot image (limine-bios-cd.bin), UEFI CD boot image (limine-uefi-cd.bin)
+
+# BOOTX64.EFI (UEFI bootloader for 64-bit systems)
+# BOOTIA32.EFI (UEFI bootloader for 32-bit systems)
+# UEFI firmware looks for .EFI files in /EFI/BOOT/ - standard location
+
+xorriso -as -mkisofs ...
+# xorr+iso is a tool that creates ISO files. -as mkisofs (pretend to be mkisofs which is older tool for compatibility)
+# -b boot/limine/limine-bios-cd.bin (flag: BIOS boot image location inside ISO)
+# -no-emul-boot (Don't emulate floppy disk — use actual boot image directly.)
+# -boot-load-size 4 (load 4 sectors of boot image. Legacy BIOS requirement)
+# -boot-info-table (inject boot info into boot image, limine needs this)
+# --efi-boot boot/limine/limine-uefi-cd.bin (UEFI boot image location inside ISO)
+# -efi-boot-part --efi-boot-image (Create a proper UEFI boot partition inside ISO)
+# --protective-msdos-label (Add MBR protective label — makes disk tools recognize ISO correctly.)
+# iso_root -o netios.iso (iso_root is source folder which is to be packed inside ISO, output file name is netios.iso)
+# ./limine/limine bios-install netios.iso (Installs Limine BIOS bootloader directly into ISO's boot sector. BIOS needs this to find bootloader)
+
+qemu-system-x86_64 -cdrom netios.iso -m 512M
+# - `qemu-system-x86_64` — emulate x86_64 machine
+# - `-cdrom netios.iso` — use your ISO as CD drive
+# - `-m 512M` — give VM 512MB RAM, -m means memory (RAM)
+```
+
+Some context for myself -
+- why bother about floppy disks? (-no-emul-boot) flag - In 1990s CDs couldn't boot directly. BIOS only knew how to boot from floppy disks. They invented a hack - make the CD pretend to be floppy. BIOS thinks it is booting a floppy but actually a CD. the flag says don't pretend the hack, boot directly as a CD which is modern way.
+
+- what is a sector? - storage is divided into "fixed" pieces called sectors. 512 bytes each traditionally. ISO files mimic this structure, not just hardware. ISO format was designed to represent exactly what physical CD looks like, sector by sector. Software ISOs have sectors too. ISO file = virtual CD = same sector structure as real CD
+
+-
+
+Let me walk through the ISO file :-
+
+> netios.iso
+- /boot
+  - /limine
+    - limine-bios-cd.bin
+    - limine-uefi.cd.bin
+    - limine-bios.sys
+  - kernel
+- /efi
+  - /BOOT
+    - BOOTIA32.EFI
+    - BOOTX64.EFI
+- /[BOOT]
+  - 1-Boot-NoEmul.img
+  - 2-Boot-NoEmul.img
+- boot.catalog
+- limine.conf
+
+To install wasmtime and verify installation -
+```bash
+curl https://wasmtime.dev/install.sh -sSf | bash
+
+wasmtime -V
+```
+
+## Building a logger for Kernel:
+
+To build a logger, I must go from changing a pixel color on the screen to printing a sentence. I need:
+1. font to define character shapes
+2. writer to handle text layout
+3. macro to make it easy to use
+
+### Step 1: Font
+I need a bitmap font, an image text format for painting the pixels according to character symbols. I'll use PSF1 as AI told me to, where each char is 8*16 grid of bits.
+- 1 means "draw a pixel here" (foreground)
+- 0 means "skip the pixel" (background)
+
+### Step 2: Character Renderer
+- Create the fn that takes a char, looks up its bitmap, loop through bits to call the put_pixel logic.
+```rs
+fn draw_char(font: &[u8], c: char, x: usize, y: usize) {
+    let glyph = &font[c as usize * 16..(c as usize + 1) * 16]; // Get 16 bytes for the char
+    for (row_idx, row) in glyph.iter().enumerate() {
+        for bit in 0..8 {
+            if (row >> (7 - bit)) & 1 == 1 {
+                put_pixel(x + bit, y + row_idx, WHITE);
+            }
+        }
+    }
+}
+```
+
+### Step 3: fmt::Write implementation
+To use println!, I need core::gmt::Write trait for global Writer struct. This struct tracks the current (x, y) cursor position and handles "newlines" by resetting x to 0 and increasing y by 16.
+
+With logger I can do -
+- Error Handling: Print PANIC: ..something... instead of frozen screen.
+- Debugging: Print memory addresses my kernel is using to verify the math.
+- Interaction: groundwork for Shell.
+
