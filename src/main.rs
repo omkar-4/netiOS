@@ -1,8 +1,10 @@
 #![no_std]
 #![no_main]
 
+mod logger;
 mod serial;
 
+use crate::logger::flush;
 use core::panic::PanicInfo;
 use limine::BaseRevision;
 use limine::request::FramebufferRequest;
@@ -19,8 +21,16 @@ static FRAMEBUFFER_REQUEST: FramebufferRequest = FramebufferRequest::new();
 pub extern "C" fn _start() -> ! {
     serial::init();
 
+    // verify serial works at boot
     serial::panic_force_write("[OK] COM1 serial initialized");
-    serial::panic_force_write("here is some msg");
+    serial::panic_force_write("\n this is a msg");
+
+    // push text to lockfree buffer
+    crate::println!("hello from my side");
+    crate::println!("numbers: {}, Hex:{:#X}", 42, 0xABCD);
+
+    // run consumer manually
+    flush();
 
     if let Some(framebuffer_response) = FRAMEBUFFER_REQUEST.get_response() {
         if let Some(framebuffer) = framebuffer_response.framebuffers().next() {

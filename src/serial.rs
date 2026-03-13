@@ -42,3 +42,13 @@ pub fn panic_force_write(s: &str) {
         }
     }
 }
+
+// write a single byte - used by bg consumer
+pub fn write_byte(byte: u8) {
+    unsafe {
+        while (inb(COM1 + 5) & 0x20) == 0 {
+            // wait for line idle
+        }
+        outb(COM1, byte);
+    }
+}
