@@ -70,8 +70,8 @@ pub struct KernelLogger;
 
 impl core::fmt::Write for KernelLogger {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        // Hardcoding CPU 0 for now until we implement CPU ID detection
-        let buffer = &LOG_BUFFERS[0];
+        let cpu_id = crate::cpu::apic_id() % crate::logger::MAX_CPUS;
+        let buffer = &LOG_BUFFERS[cpu_id];
         for byte in s.bytes() {
             buffer.push_byte(byte);
         }

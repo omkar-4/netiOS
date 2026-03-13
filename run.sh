@@ -29,3 +29,5 @@ xorriso -as mkisofs -b boot/limine/limine-bios-cd.bin \
 
 echo "Starting QEMU..."
 qemu-system-x86_64 -cdrom netios.iso -m 512M
+# optional flags
+# `-cpu max`, `-cpu host` with `-enable-kvm`

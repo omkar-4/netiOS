@@ -3,7 +3,7 @@ use core::arch::asm;
 const COM1: u16 = 0x3F8;
 
 #[inline(always)]
-unsafe fn outb(port: u16, val: u8) {
+pub unsafe fn outb(port: u16, val: u8) {
     unsafe {
         asm!("out dx, al", in("dx") port, in("al") val, options(nomem, nostack, preserves_flags));
     }
