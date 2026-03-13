@@ -5,6 +5,7 @@ mod cpu;
 mod idt;
 mod logger;
 mod memory;
+mod paging;
 mod serial;
 mod sfi;
 
@@ -101,6 +102,18 @@ pub extern "C" fn _start() -> ! {
         dummy_wasm_ptr,
         safe_hardware_ptr
     );
+
+    // Initiate empty Page Table Tree
+    // In real scene, would be allocated by PhysicalAllocator
+    // static ensures its 4KB aligned in BSS section
+    static mut NEW_PML4: paging::PageTable = paging::PageTable::new();
+
+    let pml4_addr = core::ptr::addr_of!(NEW_PML4) as u64;
+    crate::println!(
+        "SOTA Paging: New PML4 Root Table allocated at Virtual Address {:#X}",
+        pml4_addr
+    );
+    crate::println!("(Awaiting Identity Mapping before CR3 hot-swap...)");
 
     // PKS Security
     if cpu::enable_pks() {

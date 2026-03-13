@@ -32,7 +32,13 @@ The kernel is NOT the linux kernel. I am building kernel myself. Even the archit
 
 ## Usage
 
-1. Uncomment these lines in run.sh.
+NOTE: I have worked on this project on a linux OS variant. I recommend you to try (build) this project on a linux only as I cannot guarentee if it will work on a windows or mac.
+
+NOTE 2: Just because project is built on linux doesn't means this is linux dependent. Even the Kernel is NOT linux. This OS is made to run on any modern bare-metal x86_64 device.
+
+1. Install Dependencies 
+
+2. Uncomment these lines in run.sh.
   - You'll need a fork of limine's 'binary' (binary branch is important, we don't need the codebase, just need the binary) OR
   - Run these same lines manually in shell -
     - git clone .. & make -C limine (run this at root, as with -C flag, it changes dir to limine then runs make; else first `cd` into limine cloned folder and just run `make`)
@@ -43,7 +49,7 @@ The kernel is NOT the linux kernel. I am building kernel myself. Even the archit
 # make -C limine
 ```
 
-2. Run the shell script
+3. Run the shell script
 - if you use bash
 ```bash
 bash run.sh
