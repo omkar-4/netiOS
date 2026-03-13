@@ -271,10 +271,9 @@ fn draw_char(font: &[u8], c: char, x: usize, y: usize) {
 ```
 
 ### Step 3: fmt::Write implementation
-To use println!, I need core::gmt::Write trait for global Writer struct. This struct tracks the current (x, y) cursor position and handles "newlines" by resetting x to 0 and increasing y by 16.
+To use println!, I need core::gmt::Write trait for global Writer struct. This struct tracks the current (x, y) position and handles "newlines" by resetting x to 0 and increasing y by 16.
 
 With logger I can do -
 - Error Handling: Print PANIC: ..something... instead of frozen screen.
 - Debugging: Print memory addresses my kernel is using to verify the math.
 - Interaction: groundwork for Shell.
-
