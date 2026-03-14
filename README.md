@@ -5,7 +5,7 @@
 
 NOTE : ***NOT TAKING CONTRIBUTIONS ATP***
 
-Neti is a modern OS development project with self-education about the world of OS as driving mindset.
+Neti is a modern rust-based OS development project with self-education about the world of OS as driving mindset.
 
 This is NOT a just-for-fun project. I intend to develop this into a shippable OS product that real users like you can use.
 

@@ -15,3 +15,8 @@ tiled zero-copy sasos display engine
 dirty page tracking
 dual buffer for reading and writing
 64 * 64 tiles
+
+
+---
+
+I warned you and requested you to not give me any explanation for the crash and you still did. I have no interest in listening to your reasoning process if you cannot solve my code problems. I need no more explanation. don't give me. fix my code, that is it. once it works, I will myself explicitly ask you to teach me your wisdom. but until you make it work, i don't wanna listen to you.

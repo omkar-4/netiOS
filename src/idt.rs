@@ -30,14 +30,12 @@ static mut IDT: [IdtEntry; 256] = [IdtEntry {
 
 pub fn init() {
     unsafe {
-        // Map Vector 32 (Timer) to our assembly handler
-        // cast to raw pointer first then u64
         let timer_addr = timer_interrupt_handler as *const () as u64;
         IDT[32] = IdtEntry {
             offset_low: timer_addr as u16,
-            selector: 0x28, // 0x28 is Limine's 64-bit kernel code segment
+            selector: 0x08,
             ist: 0,
-            type_attr: 0x8E, // Present, Ring 0, Interrupt Gate
+            type_attr: 0x8E,
             offset_mid: (timer_addr >> 16) as u16,
             offset_high: (timer_addr >> 32) as u32,
             zero: 0,
@@ -48,10 +46,8 @@ pub fn init() {
             offset: core::ptr::addr_of!(IDT) as u64,
         };
 
-        // Load the IDT into the CPU
         asm!("lidt [{}]", in(reg) &idt_desc, options(nostack));
 
-        // Setup the Programmable Interrupt Controller (PIC)
         crate::serial::outb(0x20, 0x11);
         crate::serial::outb(0xA0, 0x11);
         crate::serial::outb(0x21, 32);
@@ -61,17 +57,11 @@ pub fn init() {
         crate::serial::outb(0x21, 0x01);
         crate::serial::outb(0xA1, 0x01);
 
-        // Unmask IRQ0 (Timer) on Master PIC, mask everything else
-        crate::serial::outb(0x21, 0xFE);
+        crate::serial::outb(0x21, 0xFF);
         crate::serial::outb(0xA1, 0xFF);
-
-        // Turn on CPU hardware interrupts!
-        asm!("sti", options(nomem, nostack));
     }
 }
 
-// Stable Rust way to write a naked assembly interrupt handler.
-// We save CPU registers so our Rust code doesn't corrupt running programs.
 global_asm!(
     ".global timer_interrupt_handler",
     "timer_interrupt_handler:",
@@ -103,9 +93,6 @@ unsafe extern "C" {
 
 #[unsafe(no_mangle)]
 extern "C" fn handle_timer() {
-    // The background task!
-    crate::logger::flush();
-    // Send EOI to PIC hardware
     unsafe {
         crate::serial::outb(0x20, 0x20);
     }

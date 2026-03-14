@@ -18,7 +18,7 @@ static BASE_REVISION: BaseRevision = BaseRevision::new();
 static FRAMEBUFFER_REQUEST: FramebufferRequest = FramebufferRequest::new();
 
 #[unsafe(no_mangle)]
-pub extern "C" fn _start() -> ! {
+  "C" fn _start() -> ! {
     if let Some(framebuffer_response) = FRAMEBUFFER_REQUEST.get_response() {
         if let Some(framebuffer) = framebuffer_response.framebuffers().next() {
             let width = framebuffer.width() as usize;

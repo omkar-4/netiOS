@@ -4,6 +4,7 @@ pub enum MemoryKind {
     Usable,
     Reserved,
     Kernel,
+    Bootloader,
     Other,
 }
 
@@ -19,6 +20,12 @@ pub struct BootMemoryMap {
     pub count: usize,
 }
 
+// Bootloader-agnostic Kernel Placement Info
+// pub struct KernelBaseInfo {
+//     pub physical_base: u64,
+//     pub virtual_base: u64,
+// }
+
 // Physical Allocator
 pub struct PhysicalAllocator {
     pub next_free_frame: u64,
@@ -27,19 +34,22 @@ pub struct PhysicalAllocator {
 
 impl PhysicalAllocator {
     pub fn init(map: &BootMemoryMap) -> Self {
+        let mut largest_base = 0;
+        let mut largest_limit = 0;
+        let mut max_pages = 0;
+
         // Find the first large usable memory region to give to our physical allocator
         for i in 0..map.count {
             let r = &map.regions[i];
-            if r.kind == MemoryKind::Usable && r.pages > 512 {
-                return Self {
-                    next_free_frame: r.base,
-                    limit: r.base + (r.pages as u64 * 4096),
-                };
+            if r.kind == MemoryKind::Usable && r.pages > max_pages {
+                max_pages = r.pages;
+                largest_base = r.base;
+                largest_limit = r.base + (r.pages as u64 * 4096);
             }
         }
         Self {
-            next_free_frame: 0,
-            limit: 0,
+            next_free_frame: largest_base,
+            limit: largest_limit,
         }
     }
 

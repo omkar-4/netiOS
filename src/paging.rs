@@ -1,12 +1,9 @@
 use core::arch::asm;
 
-// x86_64 page table entry flags
 pub const PAGE_PRESENT: u64 = 1 << 0;
 pub const PAGE_WRITABLE: u64 = 1 << 1;
-pub const PAGE_USER: u64 = 1 << 2; // needed if wasm apps run in ring 3
+pub const PAGE_USER: u64 = 1 << 2;
 
-// single entry in any level of page level
-// 8 bytes
 #[derive(Clone, Copy)]
 #[repr(transparent)]
 pub struct PageTableEntry(u64);
@@ -17,8 +14,6 @@ impl PageTableEntry {
     }
 
     pub fn set_address(&mut self, physical_addr: u64, flags: u64) {
-        // Clear all bits, then set the new physical frame address and hardware flags.
-        // Physical addresses must be 4KB aligned (lower 12 bits are 0).
         self.0 = (physical_addr & 0x000FFFFF_FFFFF000) | flags;
     }
 
@@ -31,8 +26,6 @@ impl PageTableEntry {
     }
 }
 
-// 4KB page table with 512 entries
-// repr C align 4096 to guarentee CPU MMU can read it correctly
 #[repr(C, align(4096))]
 pub struct PageTable {
     pub entries: [PageTableEntry; 512],
@@ -45,14 +38,68 @@ impl PageTable {
         }
     }
 
-    /// Extracts the 9-bit index for a specific table level from a virtual address
     pub fn get_index(virtual_addr: u64, level: u8) -> usize {
         let shift = 12 + (level - 1) * 9;
         ((virtual_addr >> shift) & 0x1FF) as usize
     }
+
+    pub fn map_memory(
+        &mut self,
+        virtual_addr: u64,
+        physical_addr: u64,
+        flags: u64,
+        allocator: &mut crate::memory::PhysicalAllocator,
+        hhdm_offset: u64,
+    ) -> Result<(), &'static str> {
+        let pml4_index = Self::get_index(virtual_addr, 4);
+        let pdpt_index = Self::get_index(virtual_addr, 3);
+        let pd_index = Self::get_index(virtual_addr, 2);
+        let pt_index = Self::get_index(virtual_addr, 1);
+
+        let pml4_entry = &mut self.entries[pml4_index];
+        if !pml4_entry.is_present() {
+            let new_frame = allocator
+                .alloc_frame()
+                .ok_or("Out of physical memory for PDPT")?;
+            pml4_entry.set_address(new_frame, PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER);
+            unsafe {
+                core::ptr::write_bytes((new_frame + hhdm_offset) as *mut u8, 0, 4096);
+            }
+        }
+        let pdpt =
+            unsafe { &mut *((pml4_entry.physical_address() + hhdm_offset) as *mut PageTable) };
+
+        let pdpt_entry = &mut pdpt.entries[pdpt_index];
+        if !pdpt_entry.is_present() {
+            let new_frame = allocator
+                .alloc_frame()
+                .ok_or("Out of physical memory for PD")?;
+            pdpt_entry.set_address(new_frame, PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER);
+            unsafe {
+                core::ptr::write_bytes((new_frame + hhdm_offset) as *mut u8, 0, 4096);
+            }
+        }
+        let pd = unsafe { &mut *((pdpt_entry.physical_address() + hhdm_offset) as *mut PageTable) };
+
+        let pd_entry = &mut pd.entries[pd_index];
+        if !pd_entry.is_present() {
+            let new_frame = allocator
+                .alloc_frame()
+                .ok_or("Out of physical memory for PT")?;
+            pd_entry.set_address(new_frame, PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER);
+            unsafe {
+                core::ptr::write_bytes((new_frame + hhdm_offset) as *mut u8, 0, 4096);
+            }
+        }
+        let pt = unsafe { &mut *((pd_entry.physical_address() + hhdm_offset) as *mut PageTable) };
+
+        let pt_entry = &mut pt.entries[pt_index];
+        pt_entry.set_address(physical_addr, flags);
+
+        Ok(())
+    }
 }
 
-// Loads new PML4 (Root Page Table) into CPU's CR3 register
 pub unsafe fn load_cr3(pml4_physical_address: u64) {
     unsafe {
         asm!(
