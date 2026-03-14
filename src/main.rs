@@ -128,13 +128,14 @@ pub extern "C" fn _start() -> ! {
         }
     }
 
-    let blanket_pages = (64 * 1024 * 1024) / 4096;
-    for i in 0..blanket_pages {
-        let phys_addr = i * 4096;
+    // 2MiB blanket pages
+    let blanket_pages_2mb = (64 * 1024 * 1024) / 0x200000;
+    for i in 0..blanket_pages_2mb {
+        let phys_addr = i * 0x200000; // 0x200000 is exactly 2 MiB
         unsafe {
             let pml4_ptr = core::ptr::addr_of_mut!(NEW_PML4);
             (*pml4_ptr)
-                .map_memory(
+                .map_memory_2mb(
                     phys_addr,
                     phys_addr,
                     paging::PAGE_PRESENT | paging::PAGE_WRITABLE,
@@ -143,14 +144,14 @@ pub extern "C" fn _start() -> ! {
                 )
                 .expect("FB");
             (*pml4_ptr)
-                .map_memory(
+                .map_memory_2mb(
                     phys_addr + hhdm_offset,
                     phys_addr,
                     paging::PAGE_PRESENT | paging::PAGE_WRITABLE,
                     &mut phys_alloc,
                     hhdm_offset,
                 )
-                .expect("FB");
+                .expect("FB HHDM");
         }
     }
 
@@ -161,41 +162,73 @@ pub extern "C" fn _start() -> ! {
 
         while mapped_bytes < region_size_bytes {
             let phys_addr = region.base + mapped_bytes;
+
             unsafe {
                 let pml4_ptr = core::ptr::addr_of_mut!(NEW_PML4);
 
-                (*pml4_ptr)
-                    .map_memory(
-                        phys_addr,
-                        phys_addr,
-                        paging::PAGE_PRESENT | paging::PAGE_WRITABLE,
-                        &mut phys_alloc,
-                        hhdm_offset,
-                    )
-                    .expect("FI");
-                (*pml4_ptr)
-                    .map_memory(
-                        phys_addr + hhdm_offset,
-                        phys_addr,
-                        paging::PAGE_PRESENT | paging::PAGE_WRITABLE,
-                        &mut phys_alloc,
-                        hhdm_offset,
-                    )
-                    .expect("FH");
-
-                if region.kind == memory::MemoryKind::Kernel {
+                // Do NOT use 2 MiB pages for the Kernel code. Limine places the kernel at
+                // highly specific physical boundaries. Only optimize generic/usable memory.
+                if region.kind != memory::MemoryKind::Kernel
+                    && phys_addr % 0x200000 == 0
+                    && (region_size_bytes - mapped_bytes) >= 0x200000
+                {
                     (*pml4_ptr)
-                        .map_memory(
-                            phys_addr + kernel_virtual_offset,
+                        .map_memory_2mb(
+                            phys_addr,
                             phys_addr,
                             paging::PAGE_PRESENT | paging::PAGE_WRITABLE,
                             &mut phys_alloc,
                             hhdm_offset,
                         )
-                        .expect("FK");
+                        .expect("FI 2MB");
+
+                    (*pml4_ptr)
+                        .map_memory_2mb(
+                            phys_addr + hhdm_offset,
+                            phys_addr,
+                            paging::PAGE_PRESENT | paging::PAGE_WRITABLE,
+                            &mut phys_alloc,
+                            hhdm_offset,
+                        )
+                        .expect("FH 2MB");
+
+                    mapped_bytes += 0x200000;
+                } else {
+                    // Fallback to strict 4 KiB mapping for the Kernel and unaligned edges
+                    (*pml4_ptr)
+                        .map_memory(
+                            phys_addr,
+                            phys_addr,
+                            paging::PAGE_PRESENT | paging::PAGE_WRITABLE,
+                            &mut phys_alloc,
+                            hhdm_offset,
+                        )
+                        .expect("FI");
+
+                    (*pml4_ptr)
+                        .map_memory(
+                            phys_addr + hhdm_offset,
+                            phys_addr,
+                            paging::PAGE_PRESENT | paging::PAGE_WRITABLE,
+                            &mut phys_alloc,
+                            hhdm_offset,
+                        )
+                        .expect("FH");
+
+                    if region.kind == memory::MemoryKind::Kernel {
+                        (*pml4_ptr)
+                            .map_memory(
+                                phys_addr + kernel_virtual_offset,
+                                phys_addr,
+                                paging::PAGE_PRESENT | paging::PAGE_WRITABLE, // Executable implicitly via no NX bit yet
+                                &mut phys_alloc,
+                                hhdm_offset,
+                            )
+                            .expect("FK");
+                    }
+                    mapped_bytes += 4096;
                 }
             }
-            mapped_bytes += 4096;
         }
     }
 
@@ -207,24 +240,33 @@ pub extern "C" fn _start() -> ! {
             let fb_phys_base = fb_virt_base - hhdm_offset;
             let fb_size = (framebuffer.pitch() as u64) * (framebuffer.height() as u64);
 
-            let mut mapped_bytes = 0;
-            while mapped_bytes < fb_size {
-                let phys_addr = fb_phys_base + mapped_bytes;
-                let virt_addr = fb_virt_base + mapped_bytes;
+            // aligned 2MiB
+            // align base down and size up
+            let align_2mb = 0x200000;
+            let fb_virt_aligned = fb_virt_base & !(align_2mb - 1);
+            let fb_phys_aligned = fb_phys_base & !(align_2mb - 1);
 
+            let offset_diff = fb_virt_base - fb_virt_aligned;
+            let total_size = fb_size + offset_diff;
+            let fb_size_aligned = (total_size + align_2mb - 1) & !(align_2mb - 1);
+
+            let mut mapped_bytes = 0;
+            while mapped_bytes < fb_size_aligned {
+                let phys_addr = fb_phys_aligned + mapped_bytes;
+                let virt_addr = fb_virt_aligned + mapped_bytes;
                 unsafe {
                     let pml4_ptr = core::ptr::addr_of_mut!(NEW_PML4);
                     (*pml4_ptr)
-                        .map_memory(
-                            virt_addr, // Map it exactly where Limine's pointer expects it
+                        .map_memory_2mb(
+                            virt_addr, // Map Limine's Virtual HHDM Pointer
                             phys_addr,
                             paging::PAGE_PRESENT | paging::PAGE_WRITABLE,
                             &mut phys_alloc,
                             hhdm_offset,
                         )
-                        .expect("FFB");
+                        .expect("FFB 2MB");
                 }
-                mapped_bytes += 4096;
+                mapped_bytes += align_2mb;
             }
         }
     }

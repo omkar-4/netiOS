@@ -3,6 +3,7 @@ use core::arch::asm;
 pub const PAGE_PRESENT: u64 = 1 << 0;
 pub const PAGE_WRITABLE: u64 = 1 << 1;
 pub const PAGE_USER: u64 = 1 << 2;
+pub const PAGE_HUGE: u64 = 1 << 7; // bit flag for 2 MiB chunks
 
 #[derive(Clone, Copy)]
 #[repr(transparent)]
@@ -19,6 +20,10 @@ impl PageTableEntry {
 
     pub fn is_present(&self) -> bool {
         (self.0 & PAGE_PRESENT) != 0
+    }
+
+    pub fn is_huge(&self) -> bool {
+        (self.0 & PAGE_HUGE) != 0
     }
 
     pub fn physical_address(&self) -> u64 {
@@ -82,6 +87,12 @@ impl PageTable {
         let pd = unsafe { &mut *((pdpt_entry.physical_address() + hhdm_offset) as *mut PageTable) };
 
         let pd_entry = &mut pd.entries[pd_index];
+
+        // ADD THIS OVERLAP CHECK:
+        if pd_entry.is_present() && pd_entry.is_huge() {
+            return Ok(()); // Already covered by a blazing-fast 2 MiB Huge Page
+        }
+
         if !pd_entry.is_present() {
             let new_frame = allocator
                 .alloc_frame()
@@ -95,6 +106,56 @@ impl PageTable {
 
         let pt_entry = &mut pt.entries[pt_index];
         pt_entry.set_address(physical_addr, flags);
+
+        Ok(())
+    }
+
+    pub fn map_memory_2mb(
+        &mut self,
+        virtual_addr: u64,
+        physical_addr: u64,
+        flags: u64,
+        allocator: &mut crate::memory::PhysicalAllocator,
+        hhdm_offset: u64,
+    ) -> Result<(), &'static str> {
+        let pml4_index = Self::get_index(virtual_addr, 4);
+        let pdpt_index = Self::get_index(virtual_addr, 3);
+        let pd_index = Self::get_index(virtual_addr, 2);
+
+        let pml4_entry = &mut self.entries[pml4_index];
+        if !pml4_entry.is_present() {
+            let new_frame = allocator
+                .alloc_frame()
+                .ok_or("Out of physical memory for PDPT")?;
+            pml4_entry.set_address(new_frame, PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER);
+            unsafe {
+                core::ptr::write_bytes((new_frame + hhdm_offset) as *mut u8, 0, 4096);
+            }
+        }
+        let pdpt =
+            unsafe { &mut *((pml4_entry.physical_address() + hhdm_offset) as *mut PageTable) };
+
+        let pdpt_entry = &mut pdpt.entries[pdpt_index];
+        if !pdpt_entry.is_present() {
+            let new_frame = allocator
+                .alloc_frame()
+                .ok_or("Out of physical memory for PD")?;
+            pdpt_entry.set_address(new_frame, PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER);
+            unsafe {
+                core::ptr::write_bytes((new_frame + hhdm_offset) as *mut u8, 0, 4096);
+            }
+        }
+        let pd = unsafe { &mut *((pdpt_entry.physical_address() + hhdm_offset) as *mut PageTable) };
+
+        let pd_entry = &mut pd.entries[pd_index];
+
+        // ADD THIS OVERLAP CHECK:
+        if pd_entry.is_present() && !pd_entry.is_huge() {
+            return Ok(()); // Already mapped as fine-grained 4 KiB pages, don't corrupt it
+        }
+
+        // Stop at Level 2 (Page Directory) and apply the PAGE_HUGE flag
+        pd_entry.set_address(physical_addr, flags | PAGE_HUGE);
 
         Ok(())
     }
