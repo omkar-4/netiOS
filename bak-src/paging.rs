@@ -5,6 +5,11 @@ pub const PAGE_WRITABLE: u64 = 1 << 1;
 pub const PAGE_USER: u64 = 1 << 2;
 pub const PAGE_HUGE: u64 = 1 << 7; // bit flag for 2 MiB chunks
 
+// create global pointers
+pub static mut PAGE_TABLE_ROOT: *mut PageTable = core::ptr::null_mut();
+pub static mut ALLOCATOR_PTR: *mut crate::memory::PhysicalAllocator = core::ptr::null_mut();
+pub static mut GLOBAL_HHDM_OFFSET: u64 = 0;
+
 #[derive(Clone, Copy)]
 #[repr(transparent)]
 pub struct PageTableEntry(u64);
