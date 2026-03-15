@@ -1,0 +1,50 @@
+[OUTPUT_CONSTRAINTS]
+1. ZERO COMMENTS: Code must self-document via precise naming.
+2. ZERO EXTERNAL CRATES: No `x86_64`, `bitflags`, or `spin` crates.
+3. REASONING LIMITS: Max 50 words before code output.
+4. No experimental unstable feature usage
+5. Adhere strictly to rust edition 2024 protocols
+
+[task]
+objective = "Fully replace Limine's bootloader page tables with a custom PMM and 4-level Page Table. Execute a flawless CR3 hot-swap to banish Limine without crashing the kernel execution."
+
+[architecture_rules.limine_extraction]
+1. memmap = "Parse Limine's `MemmapRequest`. Identify `USABLE` RAM for the PMM. Identify `FRAMEBUFFER` to extract its physical base address and size."
+2. kernel_addr = "Parse Limine's `KernelAddressRequest`. Extract `physical_base` and `virtual_base`."
+3. hhdm_offset = "Parse Limine's `HhdmRequest`. Extract the global virtual HHDM offset."
+
+[architecture_rules.pmm]
+1. allocation = "Implement a Bump Allocator initialized with the highest `USABLE` RAM region. Decrement a pointer to allocate 4096-byte frames. Return physical addresses."
+2. zeroing = "Every allocated physical frame must be strictly zeroed out using `core::ptr::write_bytes` (accessed via HHDM virtual offset) before being used as a Page Table."
+
+[architecture_rules.paging_construction]
+1. structs = "Define `PageTable([u64; 512])` with `#[repr(align(4096))]`. Size must be assert-checked to 4096."
+2. flags = "Define constants: PRESENT (1<<0), WRITABLE (1<<1), USER (1<<2), WT (1<<3), CD (1<<4), HUGE (1<<7), NX (1<<63). Mask: `0x000FFFFF_FFFFF000`."
+3. kernel_mapping = "MANDATORY: Map the kernel's physical base to its virtual base using 4KiB pages. If this is missed, the CR3 swap will instantly triple-fault."
+4. hhdm_mapping = "MANDATORY: Identity-map all physical RAM + HHDM offset using 4KiB pages so the PMM can continue operating."
+5. framebuffer_mapping = "Map the `FRAMEBUFFER` physical region using strictly 2MiB Huge Pages (PML4 -> PDPT -> PD). Set `HUGE` (Bit 7) on the PD entry. Do NOT allocate PTs for it."
+6. mmio_mapping = "Explicitly map LAPIC physical `0xFEE00000` to `HHDM + 0xFEE00000` using 4KiB pages with `CD | WT | PRESENT | WRITABLE`."
+
+[allowed]
+- `core::arch::asm` for reading/writing `CR3`.
+- Pointer arithmetic and bitwise math.
+
+[todo]
+- Implement Bump Allocator from Limine memmap.
+- Implement virtual-to-physical mapping function `map_page(pml4, vaddr, paddr, flags, is_2mb)`.
+- Replicate Limine's critical mappings (Kernel, HHDM, Framebuffer, LAPIC) into the new PML4.
+- Swap CR3.
+
+[not_todo]
+- Do not free or reclaim Limine's `BOOTLOADER_RECLAIMABLE` memory yet. Leave it alone.
+- Do not implement a Free List / Deallocation for the PMM yet (Bump allocator only).
+- Do not configure the PAT register.
+
+[success_criteria]
+- Assembly `mov cr3, reg` executes and the next instruction successfully fetches.
+- Framebuffer writes still appear on screen.
+- LAPIC MMIO reads do not trigger Page Faults.
+
+[failure_criteria]
+- Failing to map the kernel's active virtual address, resulting in a `#PF` on the instruction pointer during `CR3` swap.
+- Using 4KiB pages for the Framebuffer.

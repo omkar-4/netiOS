@@ -1,0 +1,51 @@
+Limine Bootloader Replacement (Total Memory Sovereignty Transition)
+|-- State Extraction & Discovery Phase
+|   |-- HHDM (Higher Half Direct Map) Request
+|   |   |-- Extract global virtual offset (used to safely read physical addresses)
+|   |-- Kernel Address Request
+|   |   |-- Extract `physical_base` (Start of kernel binary in RAM)
+|   |   |-- Extract `virtual_base` (Where Limine mapped the kernel)
+|   |-- Memory Map Request
+|   |   |-- Iterate entries to find Type `USABLE` (Standard RAM for PMM)
+|   |   |-- Iterate entries to find Type `FRAMEBUFFER` (Physical base for 2MiB mapping)
+|-- Physical Memory Manager (PMM) Bootstrapping
+|   |-- Region Selection
+|   |   |-- Identify highest contiguous block of `USABLE` memory
+|   |-- Bump Allocator Initialization
+|   |   |-- Set `next_free_frame` pointer to top of selected block
+|   |-- Allocation Logic (`allocate_frame`)
+|   |   |-- Decrement pointer by 4096 bytes
+|   |   |-- Calculate virtual address via `Paddr + HHDM_offset`
+|   |   |-- Zero out the entire 4096-byte frame using `core::ptr::write_bytes` (Critical for Page Tables)
+|   |   |-- Return pure physical address of the zeroed frame
+|-- Custom Page Table Construction
+|   |-- Root Table Allocation
+|   |   |-- Call PMM to allocate new 4KiB frame for PML4
+|   |-- Mapping Phase 1: Kernel Replication (Survival Mandate)
+|   |   |-- Map `kernel_physical_base` to `kernel_virtual_base`
+|   |   |-- Scope: Size of kernel binary
+|   |   |-- Page Size: Standard 4KiB
+|   |   |-- Flags: `PRESENT | WRITABLE` (Strict RWX constraints applied later)
+|   |-- Mapping Phase 2: HHDM Replication (PMM Survival Mandate)
+|   |   |-- Identity map all physical RAM + HHDM offset to raw physical RAM
+|   |   |-- Scope: All `USABLE` memory regions
+|   |   |-- Page Size: Standard 4KiB
+|   |   |-- Flags: `PRESENT | WRITABLE | NX`
+|   |-- Mapping Phase 3: Framebuffer (Performance Optimization)
+|   |   |-- Map extracted `FRAMEBUFFER` physical base to virtual equivalent
+|   |   |-- Scope: Length of framebuffer buffer
+|   |   |-- Page Size: Huge 2MiB (Bit 7 set at PD level)
+|   |   |-- Flags: `PRESENT | WRITABLE | NX`
+|   |-- Mapping Phase 4: Hardware MMIO (LAPIC Pre-requisite)
+|   |   |-- Map Physical `0xFEE00000` to Virtual `HHDM_offset + 0xFEE00000`
+|   |   |-- Scope: Single 4KiB page
+|   |   |-- Flags: `PRESENT | WRITABLE | PWT | PCD | NX` (Strictly Uncacheable)
+|-- CR3 Hot-Swap Execution
+|   |-- Preparation
+|   |   |-- Disable hardware interrupts (`asm!("cli")`)
+|   |-- The Swap
+|   |   |-- Move physical address of custom PML4 into `CR3` register (`asm!("mov cr3, reg")`)
+|   |-- Verification
+|   |   |-- Flush TLB entirely
+|   |   |-- If next assembly instruction executes, sovereignty is achieved
+|   |   |-- (Failure state: Instant Triple Fault due to unmapped instruction pointer)

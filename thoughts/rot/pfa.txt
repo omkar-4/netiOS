@@ -1,51 +1,55 @@
 Physical Frame Allocator
 |-- Source of Truth (Memory Map from Bootloader)
-|   |-- Limine Memory Map Response
-|   |   |-- Entries Array
-|   |   |   |-- Base Address (64-bit physical address)
-|   |   |   |-- Length (64-bit size in bytes)
-|   |   |   |-- Type (Usable, Reserved, ACPI Reclaimable, Kernel/Modules, Bootloader Reclaimable)
+| |-- Limine Memory Map Response
+| | |-- Entries Array
+| | | |-- Base Address (64-bit physical address)
+| | | |-- Length (64-bit size in bytes)
+| | | |-- Type (Usable, Reserved, ACPI Reclaimable, Kernel/Modules, Bootloader Reclaimable)
 |-- Initialization Phase (Bootstrapping the Allocator)
-|   |-- Determine Total System RAM
-|   |   |-- Sum of lengths of all "Usable" and "Bootloader Reclaimable" regions
-|   |-- Calculate Required Bitmap Size
-|   |   |-- (Total RAM / 4096) / 8 = Bytes needed for the tracking bitmap
-|   |-- Find Placement for the Bitmap
-|   |   |-- Scan memory map for the first "Usable" region large enough to hold the bitmap itself
-|   |   |-- Claim this region (mark its bits as used) so the allocator doesn't overwrite its own ledger
-|-- Tracking Data Structure (The Ledger)
-|   |-- The Global Bitmap
-|   |   |-- Byte Array (e.g., `&mut [u8]`) mapped to physical memory
-|   |   |-- Bit Layout: 1 Bit = 1 Physical Frame (4096 bytes / 4KB)
-|   |   |   |-- 0 = Free Frame
-|   |   |   |-- 1 = Used / Reserved Frame
-|   |-- Free Frame Cache (Optimization)
-|   |   |-- Last Known Free Index (Caches the index of the last allocated frame to avoid scanning from 0 every time)
-|   |   |-- Total Free Frames Counter (Tracks out-of-memory state instantly)
-|-- Allocation Logic (`alloc_frame`)
-|   |-- Search Phase
-|   |   |-- Start at `Last Known Free Index`
-|   |   |-- Iterate through bytes in the bitmap
-|   |   |-- If byte != 0xFF (means at least one bit is 0)
-|   |   |   |-- Scan bits 0-7 to find the exact free bit
-|   |-- Claim Phase
-|   |   |-- Set the specific bit to 1
-|   |   |-- Update `Last Known Free Index`
-|   |   |-- Decrement `Total Free Frames Counter`
-|   |-- Return Phase
-|   |   |-- Math: Physical Address = (Byte Index * 8 + Bit Index) * 4096
-|-- Deallocation Logic (`free_frame`)
-|   |-- Validation Phase
-|   |   |-- Assert physical address is 4KB aligned (Address % 4096 == 0)
-|   |-- Release Phase
-|   |   |-- Math: Global Bit Index = Address / 4096
-|   |   |-- Math: Byte Index = Global Bit Index / 8
-|   |   |-- Math: Bit Offset = Global Bit Index % 8
-|   |   |-- Clear the specific bit to 0
-|   |   |-- Increment `Total Free Frames Counter`
-|   |   |-- Update `Last Known Free Index` if released frame is lower than current cache
-|-- Memory Locking / Initialization Sanity Rules
-|   |-- Pre-mark Hardware Reserved: Iterate over Limine map, set all non-Usable regions to 1 in the bitmap
-|   |-- Pre-mark Kernel Image: Ensure the physical addresses where Limine loaded your kernel ELF are set to 1
-|   |-- Null Frame Protection: Explicitly mark Frame 0 (Physical Address 0x0) as used to trap null pointer dereferences
-
+| |-- Determine System Memory Bounds
+| | |-- Identify highest physical address across all memory regions
+| | |-- Calculate total physical frames: Highest Address / 4096
+| |-- Calculate Required Bitmap Ledger Size
+| | |-- Total Frames / 8 = Bytes required for the bitmap
+| |-- Bootstrap the Ledger (Self-Hosting)
+| | |-- Scan memory map for the first Usable region large enough to hold the bitmap
+| | |-- Map the bitmap as a &mut [u8] pointing to this physical region (accessed via HHDM virtual offset)
+| | |-- Hard-lock this region: Set its corresponding bits to 1 so the allocator cannot allocate its own ledger
+|-- Tracking Data Structure (The Global Bitmap Ledger)
+| |-- Physical Mapping
+| | |-- 1 Bit = 1 Physical Frame (4096 bytes)
+| | | |-- 0 = Free Frame
+| | | |-- 1 = Used / Reserved Frame
+| |-- SOTA Optimizations (Fast-Path Allocation)
+| | |-- next_free_frame_hint: Caches the index of the last allocated frame to eliminate O(N) scanning from zero
+| | |-- free_frames_count: Tracks total available memory instantly (O(1) OOM checks)
+| | |-- Word-Aligned Scanning: Cast &[u8] to &[u64] to scan 64 frames per CPU cycle instead of 8
+|-- Allocation Logic (alloc_frame)
+| |-- OOM Check
+| | |-- If free_frames_count == 0, panic or return None
+| |-- Hardware-Accelerated Search Phase (SOTA)
+| | |-- Start at next_free_frame_hint / 64
+| | |-- Iterate through the bitmap as u64 chunks
+| | |-- If chunk != 0xFFFFFFFFFFFFFFFF (Not fully used)
+| | | |-- Use CPU intrinsic chunk.trailing_ones() or leading_zeros() to find the exact free bit in O(1) time
+| |-- Claim Phase
+| | |-- Set the specific bit to 1
+| | |-- Update next_free_frame_hint to this index + 1
+| | |-- Decrement free_frames_count
+| |-- Return Phase
+| | |-- Math: Physical Address = Bit Index * 4096
+|-- Deallocation Logic (free_frame)
+| |-- Validation Phase
+| | |-- Assert physical address is 4KB aligned (Address % 4096 == 0)
+| |-- Release Phase
+| | |-- Math: Global Bit Index = Address / 4096
+| | |-- Math: Byte Index = Global Bit Index / 8
+| | |-- Math: Bit Offset = Global Bit Index % 8
+| | |-- Clear the specific bit to 0
+| | |-- Increment free_frames_count
+| | |-- SOTA Hint Update: If Global Bit Index < next_free_frame_hint, set next_free_frame_hint = Global Bit Index
+|-- Strict Memory Locking & Security (Initialization Rules)
+| |-- Default State: Initialize the entire bitmap to 0xFF (All 1s / All Used)
+| |-- Whitelist Unlocking: Iterate Limine map, set bits to 0 only for exactly Usable and Bootloader Reclaimable regions
+| |-- Hardware Guard: Ensure Frame 0 (Physical Address 0x0) remains strictly 1 to trap physical null pointer dereferences
+| |-- Kernel Image Guard: Ensure physical addresses where Limine loaded the kernel ELF remain strictly 1

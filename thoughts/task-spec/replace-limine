@@ -1,0 +1,20 @@
+# Contextual Documentation: x86_64 Paging & Limine Sovereignty
+
+## Architectural State at Boot
+When Limine invokes the kernel, the CPU is in 64-bit Long Mode with paging enabled (`CR0.PG = 1`). Limine has provided a temporary Page Map Level 4 (PML4) physical address loaded into `CR3`. This environment provides the Higher Half Direct Map (HHDM), which allows the kernel to access physical memory `X` via virtual address `X + HHDM_offset`. To establish total sovereignty, the OS must allocate a new PML4, perfectly replicate the active virtual environments, and hot-swap `CR3`.
+
+## The Intel x86_64 Page Translation Walk
+Translation of a 48-bit virtual address involves reading up to four 4096-byte tables (PML4, PDPT, PD, PT), each containing 512 entries of 64 bits.
+1. The CPU reads `CR3` to find the physical base of the PML4.
+2. It extracts bits 39-47 of the virtual address, multiplies by 8, and reads the PML4 entry.
+3. If `Present=1`, it extracts the physical address (Bits 12-51) of the next table (PDPT) and repeats the process for PD and PT.
+4. Bit extraction mask for physical addresses is exactly `0x000FFFFF_FFFFF000`.
+
+## The 2MiB Huge Page Optimization (Framebuffer)
+For high-bandwidth contiguous memory like the Framebuffer, standard 4KiB pages induce massive Translation Lookaside Buffer (TLB) thrashing. The x86_64 architecture permits terminating the page walk early at the Page Directory (PD) level. By setting Bit 7 (`Page Size / PS`) to `1` in a PD entry, the entry's physical address (Bits 21-51) points directly to a 2MiB block of physical memory. The final Page Table (PT) is omitted.
+
+## Strict MMIO Requirements (Local APIC)
+The LAPIC resides at physical address `0xFEE00000`. Because this is hardware, not RAM, speculative CPU reads or cached writes will cause catastrophic hardware state corruption. The page table entry mapping the LAPIC must explicitly set Bit 3 (`PWT` - Write-Through) and Bit 4 (`PCD` - Cache Disable).
+
+## The Triple Fault Danger Zone
+During the `mov cr3, reg` instruction, the CPU instantly flushes the TLB and switches to the new memory map. The very next instruction fetch will use the *new* page tables. If the kernel's active virtual address `RIP` is not mapped identically in the new PML4, the fetch fails, triggering a Page Fault (`#PF`). Because the IDT is likely unmapped or misconfigured, this immediately escalates to a Double Fault (`#DF`), then a Triple Fault, causing a hard hardware reset. Mapping the kernel code explicitly before the swap is non-negotiable.

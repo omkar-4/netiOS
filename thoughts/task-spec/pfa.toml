@@ -1,0 +1,33 @@
+[OUTPUT_CONSTRAINTS]
+1. ZERO COMMENTS: Code must self-document via precise naming.
+2. ZERO EXTERNAL CRATES: No `bitvec`, `lazy_static`, or `spin`.
+3. REASONING LIMITS: Max 50 words before code output.
+4. No experimental unstable feature usage
+5. Adhere strictly to rust edition 2024 protocols
+
+[task]
+objective = "Implement a SOTA Physical Memory Manager (PMM) using a globally synced, hardware-accelerated Bitmap Allocator."
+
+[architecture_rules.bitmap_ledger]
+1. self_hosting = "The bitmap array `&mut [u8]` must physically reside in the first available `USABLE` RAM region large enough to hold it."
+2. word_scanning = "The `alloc_frame` function MUST cast the byte slice to `&[u64]` to scan 64 frames per iteration."
+3. intrinsics = "Use Rust's `.trailing_ones()` or similar compiler intrinsics to find the first 0-bit in a `u64` chunk in O(1) time."
+4. global_state = "Use the established `UnsafeCell` + `unsafe impl Sync` tuple struct pattern to store the global static PMM state."
+
+[architecture_rules.initialization]
+1. default_deny = "The entire bitmap must initially be filled with `0xFF` (all frames marked used)."
+2. whitelist = "Only bits corresponding to `LimineMemoryMapEntryType::Usable` and `BootloaderReclaimable` may be cleared to `0`."
+3. protection = "Frame 0 (0x0) and the physical region housing the bitmap ledger itself must be strictly locked back to `1`."
+
+[architecture_rules.optimizations]
+1. caching = "Maintain a `next_free_frame_hint: usize` that updates upon allocation and resets backwards upon `free_frame` if the freed index is lower."
+2. capacity = "Maintain a `free_frames_count: usize` that is incremented/decremented to allow instant OOM checks."
+
+[allowed]
+- Pointer math and slice casting (`core::slice::from_raw_parts_mut`).
+- Limine memory map requests.
+
+[forbidden]
+- O(N) bit-by-bit scanning (must use `u64` chunks).
+- Re-scanning from index 0 on every allocation.
+- Relying on Limine's `kernel_address_request` for locking (Default-deny `0xFF` initialization handles this automatically).

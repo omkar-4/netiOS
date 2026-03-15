@@ -1,0 +1,47 @@
+[OUTPUT_CONSTRAINTS]
+1. ZERO COMMENTS: Code must self-document via precise naming.
+2. ZERO EXTERNAL CRATES: No `x86_64`, `bitflags`, or `spin` crates.
+3. REASONING LIMITS: Max 50 words before code output.
+4. No experimental unstable feature usage
+5. Adhere strictly to rust edition 2024 protocols
+
+[task]
+objective = "Implement a custom PMM and 4-level Page Table to completely replace Limine, utilizing strict mixed page sizes (4KiB RAM, 2MiB Framebuffer)."
+
+[architecture_rules.memory_layout]
+1. struct_definition = "Define `PageTable` as `[u64; 512]`. Must use `#[repr(align(4096))]` to guarantee page alignment."
+2. validation = "Use `const _: () = assert!(core::mem::size_of::<PageTable>() == 4096);`."
+
+[architecture_rules.bit_flags]
+1. present = "Bit 0 (`1 << 0`)"
+2. writable = "Bit 1 (`1 << 1`)"
+3. user = "Bit 2 (`1 << 2`)"
+4. write_through = "Bit 3 (`1 << 3`)"
+5. cache_disable = "Bit 4 (`1 << 4`)"
+6. huge_page = "Bit 7 (`1 << 7`)"
+7. nx = "Bit 63 (`1 << 63`)"
+8. address_mask = "Physical address mask must be exactly `0x000FFFFF_FFFFF000`."
+
+[architecture_rules.pmm]
+1. allocation = "Create a minimal bump allocator for physical frames using the `LimineMemmapRequest`. Allocate top-down or bottom-up from usable RAM regions."
+2. alignment = "All returned frames must be strictly 4096-byte aligned."
+
+[architecture_rules.paging_logic]
+1. indexing = "Parse virtual addresses into 9-bit indices by shifting: PML4 (>> 39), PDPT (>> 30), PD (>> 21), PT (>> 12)."
+2. main_memory = "Map standard usable RAM using 4KiB pages (traverse PML4 -> PDPT -> PD -> PT). Allocate new tables via PMM when an entry is empty."
+3. framebuffer = "Read Framebuffer physical base from Limine. Map this specific range using 2MiB Huge Pages (traverse PML4 -> PDPT -> PD). Set `huge_page` (Bit 7) on the PD entry. Do NOT allocate a PT for these addresses. Ensure contiguous mapping to support optimal 32x32 cache-aligned tiling later."
+4. mmio_lapic = "Explicitly identity-map the LAPIC physical base `0xFEE00000` using `cache_disable` | `write_through`. (Do not map the entire first 2MB, just the exact LAPIC page)."
+
+[allowed]
+- `core::arch::asm` for reading/writing `CR3`.
+- Limine memory map and framebuffer requests to get physical addresses.
+
+[forbidden]
+- Mapping the framebuffer using 4KiB pages (Strictly 2MiB).
+- Reusing Limine's existing page tables. This must be a clean `CR3` swap to a newly allocated PML4.
+
+[success_criteria]
+- Struct size is mathematically guaranteed.
+- Framebuffer is mapped directly at the Page Directory (PD) level without a Page Table (PT).
+- Inline assembly successfully loads the new physical PML4 address into `CR3` without throwing a Page Fault.
+

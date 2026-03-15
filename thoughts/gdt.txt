@@ -1,0 +1,4 @@
+read@beautifulMention for instructions on implementing paging also called virtual memory,  @beautifulMentionfor testing and quality checklist.  write paging code in @beautifulMention. 
+
+code must have no comments. strictly zero comments.
+to run qemu emulator you must use `zsh run.sh` in terminal, no other command. it will log any errors (if any). you must only run the qemu system after the complete implmentation is finished and you are ready to test. refer to run.sh if you need to know build and run process.@beautifulMention .
