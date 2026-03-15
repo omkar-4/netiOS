@@ -1,0 +1,44 @@
+[OUTPUT_CONSTRAINTS]
+1. ZERO COMMENTS: Code must self-document via precise naming.
+2. ZERO EXTERNAL CRATES: No `x86_64`, `x86`, or `acpi` crates.
+3. REASONING LIMITS: Max 50 words before code output.
+4. No experimental unstable feature usage
+5. Adhere strictly to rust edition 2024 protocols
+
+[task]
+objective = "Implement a strictly minimal x86_64 Local APIC (LAPIC) initialization in stable Rust."
+
+[architecture_rules]
+1. legacy_hardware = "The legacy 8259 PIC must be completely disabled using I/O ports `0xA1` and `0x21` before touching the APIC."
+2. discovery = "Read the LAPIC physical base address directly from the CPU MSR (Model Specific Register) `0x1B` (IA32_APIC_BASE). Do not use ACPI tables yet."
+3. memory_access = "APIC registers are Memory-Mapped I/O (MMIO). All reads and writes must strictly use `core::ptr::read_volatile` and `core::ptr::write_volatile`."
+4. addressing = "Allow a virtual memory offset (HHDM - Higher Half Direct Map) to be added to the physical MSR address to prevent Page Faults."
+
+[allowed]
+- `core::arch::asm` for `rdmsr`, `wrmsr`, and `outb` (I/O port writes).
+- Bitwise operations for MSR flags (Bit 11 = LAPIC Global Enable).
+- Volatile memory operations.
+
+[forbidden]
+- I/O APIC (IOAPIC) implementation (leave for a future step).
+- APIC Timer configuration (leave for a future step).
+- Spinlocks or complex global state.
+
+[todo]
+- Create inline assembly wrappers for `outb` to disable legacy PIC.
+- Create inline assembly wrappers for `rdmsr` to read the APIC base.
+- Map the Spurious Interrupt Vector Register (SIVR) at offset `0x0F0`.
+- Write `0x1FF` (Enable Bit 8 | Vector 0xFF) to the SIVR to software-enable the LAPIC.
+
+[not_todo]
+- Do not attempt to parse the MADT/ACPI tables.
+- Do not enable CPU interrupts (`sti`) during this setup.
+
+[success_criteria]
+- Legacy PIC is disabled without triggering an exception.
+- LAPIC base address is successfully extracted from MSR `0x1B`.
+- SIVR is written to via volatile MMIO without causing a Page Fault.
+
+[failure_criteria]
+- Code uses standard pointer dereferencing instead of volatile ops, causing the compiler to optimize away the hardware writes.
+- Relying on 32-bit legacy offsets instead of 64-bit aware memory mapping.

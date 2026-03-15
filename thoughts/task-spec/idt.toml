@@ -1,0 +1,30 @@
+[OUTPUT_CONSTRAINTS]
+1. ZERO COMMENTS: Code must self-document via precise naming.
+2. ZERO EXTERNAL CRATES: No `x86_64`, `lazy_static`, or `spin`.
+3. REASONING LIMITS: Max 50 words before code output.
+4. No experimental unstable feature usage
+5. Adhere strictly to rust edition 2024 protocols
+
+[task]
+objective = "Implement a strictly minimal 64-bit Interrupt Descriptor Table (IDT) for x86_64 using stable Rust."
+
+[architecture_rules]
+1. global_state = "Use the exact `SyncUnsafeCell` stable wrapper pattern (via `core::cell::UnsafeCell` and `unsafe impl Sync`) established in the GDT code (you can look at if for reference given strictly 'no modification' over it). NO `static mut`."
+2. memory_layout = "IDT Gate Descriptor must be exactly 16 bytes. IDTR must be exactly 10 bytes (`#[repr(C, packed)]`)."
+3. gate_type = "Use 64-bit Interrupt Gates (Type 0x8E: Present=1, DPL=0, Type=0xE)."
+4. validation = "Use compile-time assertions (`const _: () = assert!(...);`) to mathematically guarantee struct sizes."
+5. Just setup a stable working layout for the IDT, no need to populate it yet. Prove your struct sizes, bitwise logic, and global pointers are mathematically valid and work without crashing the System before adding further complexity of handler functions or enabling hardware interrupts. Do not add handler functions, do not enable hardware interrupts.
+
+[allowed]
+- `core::arch::asm` for `lidt`.
+- `core::mem::size_of` and `core::ptr::addr_of`.
+- Bitwise operations for constructing the 16-byte entries.
+
+[forbidden]
+- Defining a Task State Segment (TSS) or Interrupt Stack Table (IST) indexes (hardcode IST to 0 for now).
+- High-level abstractions for handler functions (assume raw `u64` memory addresses for now).
+- External dependencies of any kind.
+
+[success_criteria]
+- Code compiles on Rust 2024 Stable without warnings.
+- `lidt` instruction executes without triggering a General Protection Fault.

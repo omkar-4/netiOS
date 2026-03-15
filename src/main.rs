@@ -63,6 +63,8 @@ fn print_hex(val: u64) {
 pub extern "C" fn _start() -> ! {
     arch::x86_64::gdt::init();
     print_serial("[INFO] GDT initialized and loaded.\n");
+    arch::x86_64::idt::init();
+    print_serial("[INFO] IDT initialized and loaded.\n");
     print_serial("hello om \n");
 
     // Get CPU Vendor using CPUID
