@@ -1,0 +1,30 @@
+[project]
+name = "Bare-Metal x86_64 OS Development"
+
+[dev_env]
+lang = "Rust 2024"
+target = "x86_64-unknown-none"
+flags = ["-C no-redzone", "-C target-feature=-mmx,-sse,+soft-float"]
+
+[exec_env]
+arch = "x86_64"
+mode = "64-bit Long Mode"
+privilege = "Ring 0"
+boot = "Limine"
+
+[dependencies]
+allowed_crates = ["core", "limine = '0.5.0'"]
+
+[rules]
+do = [
+    "Write modular, self-sufficient, production-ready code",
+    "Explicitly define all dependencies and imports",
+    "Align memory structs exactly to hardware specifications"
+]
+dont = [
+    "No demo, pseudo, or vague code",
+    "No missing dependencies, undefined variables, or empty functions",
+    "No std (#![no_std]) or main (#![no_main])",
+    "No heap, Vec, Box, String, or alloc crates",
+    "No unwraps without mathematical proof of safety"
+]

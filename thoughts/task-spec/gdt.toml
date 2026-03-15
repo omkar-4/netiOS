@@ -1,0 +1,9 @@
+[task]
+objective = "Implement a custom Global Descriptor Table (GDT) for x86_64 Long Mode, load it using `lgdt`, and perform a far jump to reload the CS register."
+structs = "Requires `#[repr(packed)]` for `Gdtr` (10 bytes: 2-byte limit, 8-byte base) and `#[repr(C)]` for `GdtDescriptor` (8 bytes). Must include a Null descriptor (0x0), Kernel Code descriptor (Ring 0, 64-bit), Kernel Data descriptor, User Code descriptor (Ring 3), User Data descriptor, and a 16-byte TSS descriptor."
+api = "Require an `init_gdt()` function that constructs the table statically, calls `lgdt`, and executes inline assembly to reload the segment registers (CS, DS, SS, ES, FS, GS) [web:311]."
+
+[verification]
+success = "QEMU successfully boots without rebooting, and a serial log prints `[INFO] GDT initialized and loaded.`"
+failure = "Triple Fault resulting in an infinite QEMU reboot loop, caused by misaligned bitmasks in the Access Byte, incorrect structure packing, or a failed `lgdt` instruction [web:311]."
+

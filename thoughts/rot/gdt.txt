@@ -1,0 +1,39 @@
+GDT (Global Descriptor Table)
+├── GDTR (GDT Register / Pointer)
+│ ├── Limit (16-bit: Total table size in bytes minus 1)
+│ └── Base (64-bit: Physical memory address of the table)
+└── Table Entries (Array of Segment Descriptors)
+├── Null Descriptor (Index 0)
+│ └── Atomic Unit: 64 bits of pure 0 (Mandatory hardware rule)
+├── Kernel Code Segment
+│ ├── Base Address (32 bits split across layout)
+│ ├── Limit (20 bits split across layout)
+│ ├── Access Byte (8 bits)
+│ │ ├── P (Present bit): 1 = Valid segment
+│ │ ├── DPL (Privilege Level): 2 bits (00 = Ring 0 / Kernel)
+│ │ ├── S (Descriptor Type): 1 = Code/Data
+│ │ ├── E (Executable): 1 = Code
+│ │ ├── DC (Direction/Conforming): 0 = Strict privilege
+│ │ ├── RW (Readable/Writable): 1 = Readable
+│ │ └── A (Accessed): 0 (CPU flips this to 1 when used)
+│ └── Flags Nibble (4 bits)
+│ ├── G (Granularity): Ignored in 64-bit mode
+│ ├── DB (Size): 0 = 64-bit segment
+│ ├── L (Long Mode): 1 = 64-bit native code
+│ └── Reserved: 1 bit (must be 0)
+├── Kernel Data Segment
+│ └── [Identical atomic layout to Code, but E=0, L=0, RW=Writable]
+├── User Code Segment
+│ └── [Identical atomic layout to Kernel Code, but DPL=11 for Ring 3]
+├── User Data Segment
+│ └── [Identical atomic layout to Kernel Data, but DPL=11 for Ring 3]
+└── TSS Descriptor (Task State Segment)
+├── Low 64 bits: Standard descriptor format
+│ └── Access Byte: S=0 (System Segment), Type=1001 (Available TSS)
+└── High 64 bits (x86_64 strictly requires TSS to be 128-bit)
+├── Base Upper 32 bits
+└── Reserved 32 bits of 0
+
+
+NOTES:
+In modern 64-bit mode, the CPU actually ignores the "Base" and "Limit" variables for the Code and Data segments. It treats memory as one giant flat space. But it is still important to implement even if it is ignored. It also still strictly checks the Access Byte, Privilege Level (DPL), and Long Mode (L) bit. If one bit is misaligned, the CPU refuses to execute the code.

@@ -1,0 +1,36 @@
+IDT (Interrupt Descriptor Table)
+|-- IDTR (IDT Register / Pointer)
+|   |-- Limit (16-bit: Total table size in bytes minus 1)
+|   |-- Base (64-bit: Physical memory address of the table)
+|-- Table Entries (Array of exactly 256 Segment Descriptors)
+|   |-- CPU Exceptions (Indices 0 to 31)
+|   |   |-- 0: Divide by Zero
+|   |   |-- 3: Breakpoint
+|   |   |-- 6: Invalid Opcode
+|   |   |-- 8: Double Fault (Requires dedicated IST stack)
+|   |   |-- 13: General Protection Fault
+|   |   |-- 14: Page Fault (Passes error code and CR2 register)
+|   |   |-- [Other hardware-reserved exceptions]
+|   |-- Hardware Interrupts / IRQs (Indices 32 to 255)
+|   |   |-- 32: Timer (Mapped from APIC)
+|   |   |-- 33: Keyboard (Mapped from APIC)
+|   |   |-- [Custom mapped vectors for network/mouse]
+|   |-- Entry Layout (16 Bytes each for 64-bit mode)
+|   |   |-- Offset Low (16 bits: Lower part of handler function address)
+|   |   |-- Segment Selector (16 bits: Points to Kernel Code Segment in GDT)
+|   |   |-- IST (Interrupt Stack Table) / Reserved
+|   |   |   |-- IST Index (3 bits: 0 = disabled, 1-7 = use specific stack)
+|   |   |   |-- Reserved (5 bits: must be 0)
+|   |   |-- Type and Attributes (8 bits)
+|   |   |   |-- Gate Type (4 bits: 1110 = Interrupt Gate, 1111 = Trap Gate)
+|   |   |   |-- S (Storage Segment): 0 for Interrupts
+|   |   |   |-- DPL (Privilege Level): 2 bits (00 = Ring 0, 11 = Ring 3 can trigger via `int` instruction)
+|   |   |   |-- P (Present bit): 1 = Active handler
+|   |   |-- Offset Middle (16 bits: Middle part of handler function address)
+|   |   |-- Offset High (32 bits: Upper part of handler function address)
+|   |   |-- Reserved (32 bits: Must be 0)
+|-- Handler Stubs (Assembly Wrappers)
+|   |-- Save State: Push all CPU registers to stack
+|   |-- Call Rust Logic: Pass interrupt number and error code (if any)
+|   |-- Restore State: Pop all CPU registers from stack
+|   |-- Return: Execute `iretq` instruction to resume interrupted code

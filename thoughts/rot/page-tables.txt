@@ -1,0 +1,48 @@
+Page Tables (Virtual Memory Management)
+|-- CR3 Register (Page Directory Base Register)
+|   |-- Physical Address of Level 4 Table (Bits 12-51)
+|   |-- PWT (Page-Level Write-Through) (Bit 3)
+|   |-- PCD (Page-Level Cache Disable) (Bit 4)
+|-- Paging Structure Hierarchy (4-Level Paging for x86_64)
+|   |-- PML4 (Page Map Level 4)
+|   |   |-- 512 Entries (Each maps 512 GB of Virtual Memory)
+|   |   |-- Total Size: 4096 Bytes (One 4KB Page)
+|   |-- PDP (Page Directory Pointer / Level 3)
+|   |   |-- 512 Entries (Each maps 1 GB of Virtual Memory)
+|   |   |-- Total Size: 4096 Bytes
+|   |-- PD (Page Directory / Level 2)
+|   |   |-- 512 Entries (Each maps 2 MB of Virtual Memory)
+|   |   |-- Can map directly to 2MB Physical Pages (Huge Pages)
+|   |   |-- Total Size: 4096 Bytes
+|   |-- PT (Page Table / Level 1)
+|   |   |-- 512 Entries (Each maps 4 KB of Virtual Memory)
+|   |   |-- Total Size: 4096 Bytes
+|-- Table Entry Format (64 bits per entry at any level)
+|   |-- Physical Base Address (Bits 12-51: Points to next table or physical frame)
+|   |-- Control Flags (Bits 0-11)
+|   |   |-- P (Present): Bit 0 (1 = Valid mapping, 0 = Page Fault if accessed)
+|   |   |-- RW (Read/Write): Bit 1 (1 = Writable, 0 = Read-only)
+|   |   |-- US (User/Supervisor): Bit 2 (1 = User Ring 3 access allowed, 0 = Kernel Ring 0 only)
+|   |   |-- PWT (Page-Level Write-Through): Bit 3
+|   |   |-- PCD (Page-Level Cache Disable): Bit 4 (Useful for memory-mapped I/O like Framebuffer)
+|   |   |-- A (Accessed): Bit 5 (Hardware sets to 1 when read/written)
+|   |   |-- D (Dirty): Bit 6 (Hardware sets to 1 when written; Level 1/Huge Pages only)
+|   |   |-- PS (Page Size): Bit 7 (1 = Huge Page at L2/L3, 0 = Points to next level table)
+|   |   |-- G (Global): Bit 8 (1 = Do not flush from TLB on CR3 change)
+|   |   |-- OS-Available: Bits 9-11 (Free for custom OS logic, e.g., tracking swapped-out pages)
+|   |-- Execute-Disable (NX/XD) (Bit 63)
+|   |   |-- 1 = Prevents code execution in this memory region (Security feature)
+|-- Translation Lookaside Buffer (TLB) Management
+|   |-- INVLPG Instruction (Invalidate Single Page)
+|   |   |-- Flushes a specific virtual address translation from CPU hardware cache
+|   |-- CR3 Reload
+|   |   |-- Writing to CR3 flushes the entire TLB (except Global pages)
+|-- Address Translation Logic (Virtual to Physical Math)
+|   |-- Virtual Address Layout (64-bit pointer)
+|   |   |-- Sign Extension (Bits 48-63: Must be all 0s or all 1s)
+|   |   |-- PML4 Index (Bits 39-47: Extracts index 0-511)
+|   |   |-- PDP Index (Bits 30-38: Extracts index 0-511)
+|   |   |-- PD Index (Bits 21-29: Extracts index 0-511)
+|   |   |-- PT Index (Bits 12-20: Extracts index 0-511)
+|   |   |-- Page Offset (Bits 0-11: Exact byte within the 4KB frame)
+

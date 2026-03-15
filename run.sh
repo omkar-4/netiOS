@@ -28,7 +28,7 @@ xorriso -as mkisofs -b boot/limine/limine-bios-cd.bin \
 ./limine/limine bios-install netios.iso
 
 echo "Starting QEMU..."
-qemu-system-x86_64 -cdrom netios.iso -m 512M -d int -no-reboot -M smm=off
+qemu-system-x86_64 -cdrom netios.iso -m 512M -d int -no-reboot -M smm=off -serial stdio
 # qemu-system-x86_64 -cdrom netios.iso -m 512M -d int -M smm=off
 # qemu-system-x86_64 -cdrom netios.iso -m 512M -d int -no-reboot -M smm=off
 # -d int (dump log of cpu interrupts and exception),

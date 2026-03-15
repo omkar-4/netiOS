@@ -1,0 +1,51 @@
+APIC (Advanced Programmable Interrupt Controller)
+|-- CPU Identification
+|   |-- CPUID Check (Verify APIC/x2APIC hardware support via CPUID instruction)
+|-- Local APIC (LAPIC) (One per CPU Core)
+|   |-- Base Address Locator
+|   |   |-- MSR (Model Specific Register) 0x1B (APIC_BASE)
+|   |   |   |-- Base Physical Address (Bits 12-51)
+|   |   |   |-- APIC Global Enable (Bit 11: 1 = Enabled)
+|   |   |   |-- BSP (Bootstrap Processor) Flag (Bit 8: 1 = Primary CPU)
+|   |-- Initialization State
+|   |   |-- Spurious Interrupt Vector Register (SIVR)
+|   |   |   |-- Vector ID (Bits 0-7: IDT index for spurious/ghost interrupts)
+|   |   |   |-- APIC Software Enable (Bit 8: 1 = Enabled)
+|   |-- End of Interrupt (EOI) Register
+|   |   |-- EOI Signal (Write 0x0 to signal completion of interrupt handling)
+|   |-- APIC Timer (Hardware-driven scheduler clock)
+|   |   |-- Timer LVT (Local Vector Table) Register
+|   |   |   |-- Vector ID (Bits 0-7: IDT index for timer tick, e.g., 32)
+|   |   |   |-- Timer Mode (Bits 17-18: 00 = One-Shot, 01 = Periodic, 10 = TSC-Deadline)
+|   |   |   |-- Mask (Bit 16: 0 = Enabled, 1 = Disabled)
+|   |   |-- Divide Configuration Register
+|   |   |   |-- Divisor Value (Bits 0-3: 0011 = Divide by 16, etc.)
+|   |   |-- Initial Count Register (Ticks to countdown before firing)
+|   |   |-- Current Count Register (Current ticks remaining)
+|   |-- Inter-Processor Interrupts (IPI) (For multi-core waking/sync)
+|   |   |-- ICR (Interrupt Command Register)
+|   |   |   |-- Vector (Bits 0-7: IDT index to trigger on target CPU)
+|   |   |   |-- Delivery Mode (Bits 8-10: 000 = Fixed, 100 = NMI, 110 = INIT, 111 = Startup/SIPI)
+|   |   |   |-- Destination Mode (Bits 11: 0 = Physical, 1 = Logical)
+|   |   |   |-- Level (Bit 14: 1 = Assert, 0 = De-assert)
+|   |   |   |-- Destination Shorthand (Bits 18-19: 00 = No Shorthand, 01 = Self, 10 = All Including Self, 11 = All Excluding Self)
+|   |   |   |-- Destination ID (Bits 56-63: Target LAPIC ID)
+|-- IOAPIC (Global System Interrupt Controller) (One per Motherboard)
+|   |-- Base Address Locator
+|   |   |-- Extracted from ACPI MADT (Multiple APIC Description Table) parsing
+|   |-- IOAPIC Register Selection Window (Memory Mapped)
+|   |   |-- IOREGSEL (Offset 0x00: Index of register to read/write)
+|   |   |-- IOWIN (Offset 0x10: Data to read/write from selected register)
+|   |-- Redirection Table (Routing external hardware pins to specific CPU IDT vectors)
+|   |   |-- Redirection Entry (64 bits per hardware pin/IRQ)
+|   |   |   |-- Vector (Bits 0-7: Target IDT index, e.g., 33 for Keyboard)
+|   |   |   |-- Delivery Mode (Bits 8-10: 000 = Fixed)
+|   |   |   |-- Destination Mode (Bit 11: 0 = Physical)
+|   |   |   |-- Pin Polarity (Bit 13: 0 = High, 1 = Low)
+|   |   |   |-- Trigger Mode (Bit 15: 0 = Edge, 1 = Level)
+|   |   |   |-- Mask (Bit 16: 0 = Unmasked/Enabled, 1 = Masked/Disabled)
+|   |   |   |-- Destination ID (Bits 56-63: Target LAPIC ID to send interrupt to)
+|-- Legacy PIC Disablement (Mandatory when using APIC)
+|   |-- IO Ports 0x21 and 0xA1
+|   |   |-- Write 0xFF to fully mask and disable old 8259 PIC chips
+
